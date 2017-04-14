@@ -1,0 +1,38 @@
+#!/usr/bin/env ruby
+
+require 'openssl'
+require 'net/https'
+require 'base64'
+
+#Importing AWS credentials
+s3_access = ENV['s3_access']
+s3_secret = ENV['s3_secret']
+
+#Distribution ID of the Web Distribution
+cf_distribution = ENV['AWS_CF_DISTRIBUTION']
+
+#Assigning default path
+paths = '<Path>/' + '*' + '</Path>'
+date = Time.now.utc.strftime("%a, %d %b %Y %H:%M:%S %Z")
+#Ruby way to generate a HMAC-SHA1 signature for OAuth
+hmac = OpenSSL::HMAC.digest('sha1', s3_secret, date)
+
+uri = URI.parse('https://cloudfront.amazonaws.com/2010-08-01/distribution/' + cf_distribution + '/invalidation')
+
+#An HTTP client API for Ruby
+req = Net::HTTP::Post.new(uri.path)
+req.initialize_http_header({
+  'x-amz-date' => date,
+  'Content-Type' => 'text/xml',
+  'Authorization' => "AWS %s:%s" % [s3_access, Base64.encode64(hmac)]
+})
+
+req.body = "<InvalidationBatch>" + paths + "<CallerReference>ref_#{Time.now.utc.to_i}</CallerReference></InvalidationBatch>"
+
+http = Net::HTTP.new(uri.host, uri.port)
+http.use_ssl = true
+http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+res = http.request(req)
+
+puts res.code
+puts res.body
